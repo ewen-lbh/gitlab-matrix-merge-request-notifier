@@ -52,7 +52,9 @@ def clean_notified_mrs(notified_mrs: Set[int]) -> Set[int]:
     ready_mrs = get_mrs_with_ready_label()
     
     # Remove MRs that are closed or no longer have the ready label
-    return notified_mrs - closed_mrs - (notified_mrs - ready_mrs)
+    to_clean = closed_mrs - (notified_mrs - ready_mrs)
+    print(f"Removing from already-notified MRs {notified_mrs & to_clean!r} (MR was closed or review:ready was removed)")
+    return notified_mrs - to_clean
 
 def send_matrix_message(client: MatrixClient, room_id: str, message: str) -> None:
     room: Room = client.join_room(room_id)
@@ -70,6 +72,7 @@ def main() -> None:
     notified_mrs: Set[int] = load_notified_mrs()
     
     while True:
+        print("Checking for MRs to notify / remove from notified MRs")
         try:
             # Clean up notified MRs (closed or label removed)
             notified_mrs = clean_notified_mrs(notified_mrs)
@@ -82,16 +85,19 @@ def main() -> None:
             for mr in ready_mrs:
                 mr_id: int = mr['iid']
                 if mr_id not in notified_mrs:
+                    print(f"Notifying for !{mr_id}")
                     message: str = f'New merge request ready for review: <a href="{mr["web_url"]}">!{mr_id} {mr["title"]}</a>'
                     send_matrix_message(client, MATRIX_ROOM_ID, message)
                     notified_mrs.add(mr_id)
                     save_notified_mrs(notified_mrs)
             
+            print(f"Will check again in {CHECK_INTERVAL} seconds")
             time.sleep(CHECK_INTERVAL)
             
         except Exception as e:
             print(f"Error occurred: {e}")
             time.sleep(60)  # Wait a minute before retrying if there's an error
+            print("Will try again in 1 min")
 
 if __name__ == "__main__":
     main()
