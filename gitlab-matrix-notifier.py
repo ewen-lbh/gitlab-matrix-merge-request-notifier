@@ -29,23 +29,34 @@ def save_notified_mrs(notified_mrs: Set[int]) -> None:
     with open(STORAGE_FILE, 'w') as f:
         json.dump(list(notified_mrs), f)
 
-def get_merge_requests(state: str = "opened") -> List[Dict[str, Any]]:
+def get_all_open_mrs() -> List[Dict[str, Any]]:
     url: str = f"{GITLAB_URL}/api/v4/projects/{PROJECT_ID}/merge_requests"
-    params: Dict[str, str] = {"state": state}
-    if state == "opened":
-        params["labels"] = "review:ready"
+    params: Dict[str, str] = {"state": "opened", "per_page": "100"}
     
     response: requests.Response = requests.get(url, params=params)
     return response.json()
 
-def clean_closed_mrs(notified_mrs: Set[int]) -> Set[int]:
-    closed_mrs: List[Dict[str, Any]] = get_merge_requests(state="closed")
-    closed_mr_ids: Set[int] = {mr['iid'] for mr in closed_mrs}
-    return notified_mrs - closed_mr_ids
+def get_mrs_with_ready_label() -> Set[int]:
+    all_mrs = get_all_open_mrs()
+    return {mr['iid'] for mr in all_mrs if 'review:ready' in mr.get('labels', [])}
+
+def get_closed_mrs() -> Set[int]:
+    url: str = f"{GITLAB_URL}/api/v4/projects/{PROJECT_ID}/merge_requests"
+    params: Dict[str, str] = {"state": "closed", "per_page": "100"}
+    
+    response: requests.Response = requests.get(url, params=params)
+    return {mr['iid'] for mr in response.json()}
+
+def clean_notified_mrs(notified_mrs: Set[int]) -> Set[int]:
+    closed_mrs = get_closed_mrs()
+    ready_mrs = get_mrs_with_ready_label()
+    
+    # Remove MRs that are closed or no longer have the ready label
+    return notified_mrs - closed_mrs - (notified_mrs - ready_mrs)
 
 def send_matrix_message(client: MatrixClient, room_id: str, message: str) -> None:
     room: Room = client.join_room(room_id)
-    room.send_text(message)
+    room.send_html(message)
 
 def main() -> None:
     if not all([MATRIX_USERNAME, MATRIX_PASSWORD, MATRIX_ROOM_ID]):
@@ -60,17 +71,18 @@ def main() -> None:
     
     while True:
         try:
-            # Clean up closed MRs from our notified set
-            notified_mrs = clean_closed_mrs(notified_mrs)
+            # Clean up notified MRs (closed or label removed)
+            notified_mrs = clean_notified_mrs(notified_mrs)
             save_notified_mrs(notified_mrs)
             
-            # Check for new MRs
-            merge_requests: List[Dict[str, Any]] = get_merge_requests()
+            # Check for new MRs with review:ready label
+            all_mrs: List[Dict[str, Any]] = get_all_open_mrs()
+            ready_mrs = [mr for mr in all_mrs if 'review:ready' in mr.get('labels', [])]
             
-            for mr in merge_requests:
+            for mr in ready_mrs:
                 mr_id: int = mr['iid']
                 if mr_id not in notified_mrs:
-                    message: str = f"New merge request ready for review: [!{mr_id} {mr['title']}]({mr['web_url']})"
+                    message: str = f'New merge request ready for review: <a href="{mr["web_url"]}">!{mr_id} {mr["title"]}</a>'
                     send_matrix_message(client, MATRIX_ROOM_ID, message)
                     notified_mrs.add(mr_id)
                     save_notified_mrs(notified_mrs)
