@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "gitlab-matrix-merge-request-notifier"
+version = "0.1.0"
+description = ""
+authors = ["Ewen Le Bihan <hey@ewen.works>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+requests = "^2.32.3"
+matrix-client = "^0.4.0"
+python-dotenv = "^1.0.1"
+
+
+[tool.poetry.group.dev.dependencies]
+pynvim = "^0.5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
