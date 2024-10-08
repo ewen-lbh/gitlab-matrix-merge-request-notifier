@@ -56,7 +56,7 @@ def clean_notified_mrs(notified_mrs: Set[int]) -> Set[int]:
 
 def send_matrix_message(client: MatrixClient, room_id: str, message: str) -> None:
     room: Room = client.join_room(room_id)
-    room.send_html(message)
+    room.send_html(message, msgtype="m.notice")
 
 def main() -> None:
     if not all([MATRIX_USERNAME, MATRIX_PASSWORD, MATRIX_ROOM_ID]):
